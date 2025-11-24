@@ -1,0 +1,6 @@
+# Exclure les dossiers d'environnement Python
+venv/
+
+# Exclure les fichiers de données temporaires ou locaux
+*.pyc
+tasks_history.json
