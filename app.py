@@ -6,17 +6,83 @@ import os
 from PIL import Image
 
 # --- CONFIGURATION GLOBALE ---
-# ATTENTION : Clé exposée pour la démonstration. À remplacer par une variable d'environnement !
-MA_CLE_API = "AIzaSyBt3NPchJeCZ003rWXFYMMzm88RPhURPfE" 
+# IMPORTANT : Collez votre NOUVELLE clé API autorisée ici !
+MA_CLE_API = "AIzaSyCLD0iHr4mEPDJqKl8ugG7nKUfUynTpeSM" 
 MODEL_ID = "gemini-flash-lite-latest" 
-HISTORY_FILE = "tasks_history.json" 
 POINTS_PAR_TACHE = 10 
 
 st.set_page_config(page_title="Agent Ménage", page_icon="🧹", layout="wide")
-st.title("🧹 Agent Ménage (MVP Complet)")
+st.title("🧹 Agent Ménage (Version Foyer Séparé)")
+
+
+# --- FONCTIONS DE GESTION DE DONNÉES (PERSISTANCE MULTI-FOYER) ---
+
+def get_history_filename(foyer_id):
+    """Retourne le nom de fichier basé sur l'ID du foyer."""
+    if not foyer_id:
+        # Fallback pour éviter les erreurs si le champ est vide
+        return "tasks_history_default.json" 
+    return f"tasks_history_{foyer_id.lower()}.json"
+
+def load_data(foyer_id):
+    """Charge l'historique des tâches depuis le fichier JSON spécifique au foyer."""
+    filename = get_history_filename(foyer_id)
+    if os.path.exists(filename):
+        try:
+            with open(filename, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return []
+    return []
+
+def save_data(foyer_id, new_tasks=None):
+    """Fusionne les nouvelles tâches et sauvegarde dans le fichier spécifique."""
+    filename = get_history_filename(foyer_id)
+    
+    if new_tasks:
+        # Si de nouvelles tâches sont soumises, on les ajoute à la session
+        for task in new_tasks:
+            task['status'] = 'PENDING'
+        st.session_state.history.extend(new_tasks)
+        
+    with open(filename, 'w') as f:
+        json.dump(st.session_state.history, f, indent=4)
+    return True
+
+def reset_history(foyer_id):
+    """Supprime le fichier d'historique du foyer et réinitialise l'état."""
+    filename = get_history_filename(foyer_id)
+    if os.path.exists(filename):
+        os.remove(filename)
+    st.session_state.history = []
+    st.rerun() 
+
+def mark_as_done(index, foyer_id):
+    """Marque une tâche comme 'DONE' et sauvegarde."""
+    # L'index 'i' est l'index dans la liste st.session_state.history
+    if st.session_state.history[index]['status'] == 'PENDING':
+        st.session_state.history[index]['status'] = 'DONE'
+        save_data(foyer_id) # Utilise le foyer_id pour cibler le bon fichier
+        st.rerun()
+
+def calculate_score(history):
+    """Calcule le score et le temps travaillé par utilisateur."""
+    scores = {}
+    for task in history:
+        person = task.get('attribution', 'Inconnu')
+        if person not in scores:
+            scores[person] = {"done": 0, "pending": 0, "total_time": 0}
+        
+        if task.get('status') == 'DONE':
+            scores[person]['done'] += POINTS_PAR_TACHE
+        else:
+            scores[person]['pending'] += POINTS_PAR_TACHE
+        
+        scores[person]['total_time'] += task.get('temps_estime_min', 0)
+    return scores
+
 
 # --- SCHÉMA JSON REQUIS ---
-# Structure finale pour l'attribution et la planification (UX)
 SCHEMA_TACHE = {
     "type": "object",
     "properties": {
@@ -40,89 +106,20 @@ SCHEMA_TACHE = {
     "required": ["taches"]
 }
 
-
-# --- FONCTIONS DE GESTION DE DONNÉES (PERSISTANCE) ---
-
-def load_data():
-    """Charge l'historique des tâches (persistance)."""
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, 'r') as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            return []
-    return []
-
-def save_data(new_tasks=None):
-    """Fusionne les nouvelles tâches et sauvegarde."""
-    if new_tasks:
-        # Initialise les nouvelles tâches à PENDING
-        for task in new_tasks:
-            task['status'] = 'PENDING'
-        st.session_state.history.extend(new_tasks)
-        
-    with open(HISTORY_FILE, 'w') as f:
-        json.dump(st.session_state.history, f, indent=4)
-    
-    return True
-
-def reset_history():
-    """SUPPRIME le fichier d'historique (pour les tests)."""
-    if os.path.exists(HISTORY_FILE):
-        os.remove(HISTORY_FILE)
-    st.session_state.history = []
-    st.rerun() # Redémarre l'application
-
-def mark_as_done(index):
-    """Marque une tâche comme 'DONE' et met à jour."""
-    if st.session_state.history[index]['status'] == 'PENDING':
-        st.session_state.history[index]['status'] = 'DONE'
-        save_data()
-        st.rerun() # Force la mise à jour du tableau de bord
-
-def calculate_score(history):
-    """Calcule le score et le temps travaillé par utilisateur."""
-    scores = {}
-    for task in history:
-        person = task.get('attribution', 'Inconnu')
-        if person not in scores:
-            scores[person] = {"done": 0, "pending": 0, "total_time": 0}
-        
-        if task.get('status') == 'DONE':
-            scores[person]['done'] += POINTS_PAR_TACHE
-        else:
-            scores[person]['pending'] += POINTS_PAR_TACHE
-        
-        scores[person]['total_time'] += task.get('temps_estime_min', 0)
-    return scores
-
-
-# --- FONCTIONS DE COMMUNICATION API ---
-
 def image_to_base64(uploaded_file):
     return base64.b64encode(uploaded_file.getvalue()).decode()
 
 def ask_gemini(prompt, image_file=None):
-    # L'URL est le nom standard du modèle qui a fonctionné
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_ID}:generateContent?key={MA_CLE_API}"
     
-    # Correction de l'erreur 400 (Changement de nom de clé)
-    config = {
-        "responseMimeType": "application/json", 
-        "responseSchema": SCHEMA_TACHE
-    }
-    
+    config = {"responseMimeType": "application/json", "responseSchema": SCHEMA_TACHE}
     parts = [{"text": prompt}]
     
     if image_file:
         img_b64 = image_to_base64(uploaded_file=image_file)
         parts.append({"inline_data": {"mime_type": image_file.type, "data": img_b64}})
     
-    # La clé 'generationConfig' est la clé correcte pour l'API REST
-    payload = {
-        "contents": [{"parts": parts}], 
-        "generationConfig": config
-    }
+    payload = {"contents": [{"parts": parts}], "generationConfig": config}
     headers = {'Content-Type': 'application/json'}
     
     response = requests.post(url, headers=headers, data=json.dumps(payload))
@@ -132,19 +129,24 @@ def ask_gemini(prompt, image_file=None):
             json_text = response.json()['candidates'][0]['content']['parts'][0]['text']
             return json.loads(json_text) 
         except Exception as e:
-            return {"error": f"Erreur de décodage JSON. {e}. Réponse brute: {response.text}"}
+            # Souvent causé par un JSON mal formé ou tronqué
+            return {"error": f"Erreur de décodage JSON. Réponse brute: {response.text}"}
     else:
+        # Affiche le code d'erreur (403 si la clé n'est pas bonne)
         return {"error": f"Erreur Google ({response.status_code}) : {response.text}"}
 
 
-# --- INITIALISATION DE L'ÉTAT ET DU SCORE ---
+# --- INTERFACE UTILISATEUR PRINCIPALE ---
+
+# Initialisation de l'état (nécessaire pour le load_data dynamique)
 if 'history' not in st.session_state:
-    st.session_state.history = load_data()
+    st.session_state.history = []
+if 'current_foyer_id' not in st.session_state:
+    st.session_state.current_foyer_id = "famille_test"
+
+# --- SIDEBAR & SCOREBOARD ---
 
 scores = calculate_score(st.session_state.history)
-
-
-# --- INTERFACE UTILISATEUR PRINCIPALE ---
 
 st.sidebar.title("🏆 Scoreboard")
 st.sidebar.markdown("---")
@@ -157,8 +159,10 @@ if sorted_scores:
 else:
     st.sidebar.info("Lancez une analyse pour établir le score.")
     
+# Réinitialisation du foyer actif pour l'interface
+foyer_id_for_reset = st.session_state.current_foyer_id
 st.sidebar.markdown("---")
-st.sidebar.button("🗑️ Réinitialiser l'Historique", on_click=reset_history)
+st.sidebar.button("🗑️ Réinitialiser l'Historique de ce Foyer", on_click=reset_history, args=(foyer_id_for_reset,))
 
 
 col1, col2 = st.columns([1, 1.5])
@@ -166,6 +170,19 @@ col1, col2 = st.columns([1, 1.5])
 with col1:
     st.markdown("## ⚙️ Nouvelle Analyse & Planning")
     st.markdown("---")
+    
+    # CHAMP D'ENTRÉE DE L'ID DU FOYER (Détermine le fichier de sauvegarde)
+    foyer_id = st.text_input(
+        "🔑 ID Unique du Foyer (Ex: dupont_2025)",
+        value=st.session_state.current_foyer_id,
+        key='foyer_input' # Pour le lier à l'état de la session
+    )
+    
+    # Si l'ID du foyer change, on recharge les données !
+    if st.session_state.current_foyer_id != foyer_id:
+        st.session_state.history = load_data(foyer_id)
+        st.session_state.current_foyer_id = foyer_id
+        st.rerun() # Recharge l'interface pour afficher le nouvel historique
     
     noms_foyer = st.text_input("👥 Noms du foyer (séparés par une virgule)", value="Paul, Marie")
     disponibilite = st.selectbox("⏰ Moment d'exécution suggéré", ["Ce soir après 19h", "Demain matin avant 9h", "Ce week-end (samedi matin)"])
@@ -186,7 +203,8 @@ with col2:
                 if isinstance(res, dict) and 'error' in res:
                     st.error(res['error'])
                 elif isinstance(res, dict) and 'taches' in res:
-                    save_data(res['taches'])
+                    # SAUVEGARDE DANS LE FICHIER SPÉCIFIQUE AU FOYER
+                    save_data(foyer_id, res['taches']) 
                     st.success("Tâches enregistrées. Tableau de bord mis à jour !")
                     st.rerun() 
                 else:
@@ -196,9 +214,8 @@ with col2:
 
 # --- SECTION HISTORIQUE ---
 st.markdown("---")
-st.markdown("## 📋 Tâches en Cours et Terminées")
+st.markdown(f"## 📋 Tâches pour le Foyer : {st.session_state.current_foyer_id}")
 
-# On affiche les tâches en cours
 pending_tasks = [t for t in st.session_state.history if t.get('status') == 'PENDING']
 completed_tasks = [t for t in st.session_state.history if t.get('status') == 'DONE']
 
@@ -207,12 +224,12 @@ if pending_tasks:
     st.subheader(f"🔴 {len(pending_tasks)} Tâches en Attente")
     for i, tache in enumerate(st.session_state.history):
         if tache.get('status') == 'PENDING':
-            # Checkbox pour marquer comme fait, liée à l'index de la tâche dans l'historique global
+            # Appel à mark_as_done avec l'ID du foyer
             st.checkbox(
                 f"[{tache.get('attribution')} | {tache.get('temps_estime_min')} min] {tache.get('nom_tache')}", 
                 key=f"task_done_{i}",
                 on_change=mark_as_done,
-                args=(i,)
+                args=(i, foyer_id,) # Argument clé : l'ID du foyer
             )
             st.caption(f"Planifié: **{tache.get('moment_suggerer')}** - Priorité: {tache.get('priorite')}")
             st.caption(f"Détail: {tache.get('description_detaillee')}")
@@ -221,9 +238,8 @@ if pending_tasks:
 
 if completed_tasks:
     st.subheader(f"✅ Tâches Terminées ({len(completed_tasks)})")
-    # Affiche les 5 dernières tâches terminées
     for tache in completed_tasks[-5:]: 
         st.markdown(f"- ~~{tache.get('nom_tache')}~~ par **{tache.get('attribution')}** ({tache.get('temps_estime_min')} min)")
 
 if not st.session_state.history:
-    st.info("Aucune tâche enregistrée. Lancez une analyse pour commencer !")
+    st.info("Aucune tâche enregistrée. Entrez un ID de Foyer et lancez une analyse.")
