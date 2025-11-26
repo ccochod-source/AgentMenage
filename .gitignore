@@ -4,3 +4,4 @@ venv/
 # Exclure les fichiers de données temporaires ou locaux
 *.pyc
 tasks_history.json
+.streamlit/secrets.toml
