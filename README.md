@@ -1,4 +1,4 @@
-# Business IA
+# AgentMenage
 
 Projet d'intelligence artificielle pour le business.
 

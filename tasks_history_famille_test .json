@@ -1,0 +1,29 @@
+[
+    {
+        "nom_tache": "Ranger le dessus des commodes",
+        "temps_estime_min": 10,
+        "priorite": "Moyenne",
+        "description_detaillee": "D\u00e9placer les objets (statue, imprimante, papiers, sac) pour nettoyer la surface. Essuyer la poussi\u00e8re.",
+        "attribution": "Paul",
+        "moment_suggerer": "Ce soir apr\u00e8s 19h",
+        "status": "PENDING"
+    },
+    {
+        "nom_tache": "Organiser les sacs et cartons au sol",
+        "temps_estime_min": 15,
+        "priorite": "Basse",
+        "description_detaillee": "Plier ou ranger le carton visible \u00e0 gauche et le sac blanc. Assurer un acc\u00e8s facile au placard.",
+        "attribution": "Marie",
+        "moment_suggerer": "Ce soir apr\u00e8s 19h",
+        "status": "PENDING"
+    },
+    {
+        "nom_tache": "Nettoyer le sol pr\u00e8s du meuble",
+        "temps_estime_min": 5,
+        "priorite": "Basse",
+        "description_detaillee": "Passer un coup de balai/aspirateur sur la zone visible du parquet, surtout autour du bureau et de la commode.",
+        "attribution": "Paul",
+        "moment_suggerer": "Ce soir apr\u00e8s 19h",
+        "status": "PENDING"
+    }
+]
